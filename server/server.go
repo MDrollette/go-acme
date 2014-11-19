@@ -15,6 +15,7 @@ import (
 
 type Server struct {
 	*http.Server
+	service *Service
 }
 
 type context struct {
@@ -32,7 +33,8 @@ func NewServer() *Server {
 	http.Handle("/acme", commonHandlers.ThenFunc(appC.handleRequest))
 
 	config := &tls.Config{MinVersion: tls.VersionTLS10}
-	return &Server{&http.Server{Addr: "127.0.0.1:9999", TLSConfig: config}}
+	service := NewService(newInMemoryState())
+	return &Server{Server: &http.Server{Addr: "127.0.0.1:9999", TLSConfig: config}, service: service}
 }
 
 func loggingHandler(next http.Handler) http.Handler {
