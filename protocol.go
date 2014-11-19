@@ -18,11 +18,19 @@ type ErrorMessage struct {
 	MoreInfo string `json:"moreInfo,omitempty"`
 }
 
+func NewErrorMessage() ErrorMessage {
+	return ErrorMessage{BaseMessage: &BaseMessage{Type: "error"}}
+}
+
 type DeferMessage struct {
 	*BaseMessage        // defer
 	Token        string `json:"token"`
 	Interval     int64  `json:"interval,omitempty"`
 	Message      string `json:"message,omitempty"`
+}
+
+func NewDeferMessage() DeferMessage {
+	return DeferMessage{BaseMessage: &BaseMessage{Type: "defer"}}
 }
 
 type StatusRequestMessage struct {
@@ -49,34 +57,42 @@ type ChallengeRequestMessage struct {
 }
 
 type ChallengeMessage struct {
-	*BaseMessage                // challenge
-	SessionId    string         `json:"sessionID"`
-	Nonce        string         `json:"nonce"`
-	Challenges   []*Challenge   `json:"challenges"`
-	Combinations [][]*Challenge `json:"combinations,omitempty"`
+	*BaseMessage                    // challenge
+	SessionId    string             `json:"sessionID"`
+	Nonce        string             `json:"nonce"`
+	Challenges   []*ChallengeType   `json:"challenges"`
+	Combinations [][]*ChallengeType `json:"combinations,omitempty"`
 }
 
-type Challenge struct {
+func NewChallengeMessage() ChallengeMessage {
+	return ChallengeMessage{BaseMessage: &BaseMessage{"challenge"}}
+}
+
+type ChallengeType struct {
 	Type  string `json:"type"`
 	Token string `json:"token"`
 }
 
 type AuthorizationRequestMessage struct {
-	*BaseMessage                      // authorizationRequest
-	SessionId    string               `json:"sessionID"`
-	Nonce        string               `json:"nonce"`
-	Signature    *Signature           `json:"signature"`
-	Responses    []*ChallengeResponse `json:"responses"`
-	Contact      []string             `json:"contact,omitempty"`
+	*BaseMessage                     // authorizationRequest
+	SessionId    string              `json:"sessionID"`
+	Nonce        string              `json:"nonce"`
+	Signature    *Signature          `json:"signature"`
+	Responses    []*ChallengeAnswers `json:"responses"`
+	Contact      []string            `json:"contact,omitempty"`
 }
 
-type ChallengeResponse map[string]string
+type ChallengeAnswers map[string]string
 
-type Authorization struct {
+type AuthorizationMessage struct {
 	*BaseMessage         // authorization
 	RecoveryToken string `json:"recoveryToken,omitempty"`
 	Identifier    string `json:"identifier,omitempty"`
 	Jwk           *Jwk   `json:"jwk,omitempty"`
+}
+
+func NewAuthorizationMessage() AuthorizationMessage {
+	return AuthorizationMessage{BaseMessage: &BaseMessage{"authorization"}}
 }
 
 type CertificateRequestMessage struct {
@@ -86,10 +102,14 @@ type CertificateRequestMessage struct {
 }
 
 type CertificateMessage struct {
-	*BaseMessage          // challenge
+	*BaseMessage          // certificate
 	Certificate  string   `json:"certificate"`
 	Chain        []string `json:"chain,omitempty"`
 	Refresh      string   `json:"refresh,omitempty"`
+}
+
+func NewCertificateMessage() CertificateMessage {
+	return CertificateMessage{BaseMessage: &BaseMessage{"certificate"}}
 }
 
 type RevocationRequestMessage struct {
@@ -100,4 +120,8 @@ type RevocationRequestMessage struct {
 
 type RevocationMessage struct {
 	*BaseMessage // revocation
+}
+
+func NewRevocationMessage() RevocationMessage {
+	return RevocationMessage{BaseMessage: &BaseMessage{"revocation"}}
 }

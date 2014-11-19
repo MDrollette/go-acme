@@ -1,1 +1,3 @@
-
+/cmd/server.crt
+/cmd/server.key
+/cmd/cmd
