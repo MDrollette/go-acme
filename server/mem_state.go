@@ -180,3 +180,16 @@ func (s *inMemoryState) SetDeferredResponse(token, response string) error {
 
 	return nil
 }
+
+func (s *inMemoryState) String() string {
+	var out string
+
+	db := <-s.issuedChallenges
+	defer func() { s.issuedChallenges <- db }()
+
+	for key, value := range db {
+		out += fmt.Sprintf("%s:%s", key, value)
+	}
+
+	return out
+}
