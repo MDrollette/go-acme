@@ -26,12 +26,14 @@ type Service struct {
 func NewService(s State) *Service {
 	sc := Service{state: s}
 
+	// @todo: load from somewhere
 	keyPair, err := rsa.GenerateKey(rand.Reader, CA_KEY_SIZE)
 	if err != nil {
 		fmt.Println(err)
 	}
 	sc.keyPair = keyPair
 
+	// @todo: load from somewhere
 	crt, err := acme.CreateCertificateAuthority(sc.keyPair)
 	if nil != err {
 		fmt.Println(err)
@@ -115,7 +117,7 @@ func (s *Service) CertificateRequest(message *acme.CertificateRequestMessage) (*
 	}
 
 	// Create certificate
-	certificate, serialNumber, err := s.generateCertificate(csr)
+	certificate, serialNumber, err := s.createCertificate(csr)
 	if nil != err {
 		return nil, err
 	}
@@ -138,11 +140,12 @@ func (s *Service) CertificateRequest(message *acme.CertificateRequestMessage) (*
 }
 
 func (s *Service) AuthorizationRequest(message *acme.AuthorizationRequestMessage) (*acme.AuthorizationMessage, error) {
-	// todo: actual stuff
 	ch, err := s.state.IssuedChallenge(message.Nonce)
 	if nil != err {
 		return nil, err
 	}
+
+	// @todo: actually validate something
 
 	s.state.SetAuthorizedKeys(ch.Identifier, &message.Signature.Jwk)
 	response := acme.NewAuthorizationMessage()
@@ -163,7 +166,7 @@ func (s *Service) authorizedForIdentifier(identifier string, jwk *acme.Jwk) erro
 	return fmt.Errorf("This key is not authorized for the identifier '%s'", identifier)
 }
 
-func (s *Service) generateCertificate(csr *x509.CertificateRequest) ([]byte, string, error) {
+func (s *Service) createCertificate(csr *x509.CertificateRequest) ([]byte, string, error) {
 	uuid, err := uuid.NewV4()
 	if err != nil {
 		return nil, "", err

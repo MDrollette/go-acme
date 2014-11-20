@@ -156,7 +156,7 @@ func (c *context) handleCertificate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *context) handleRevocation(w http.ResponseWriter, r *http.Request) {
-	request := acme.StatusRequestMessage{}
+	request := acme.RevocationRequestMessage{}
 	err := json.Unmarshal(c.RawMessage, &request)
 	if err != nil {
 		fmt.Fprintf(w, "Error:", err)
