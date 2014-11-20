@@ -42,7 +42,7 @@ type Signature struct {
 	Alg   string `json:"alg"`
 	Sig   string `json:"sig"`
 	Nonce string `json:"nonce"`
-	Jwk   *Jwk   `json:"jwk"`
+	Jwk   Jwk    `json:"jwk"`
 }
 
 type Jwk struct {
@@ -65,7 +65,7 @@ type ChallengeMessage struct {
 }
 
 func NewChallengeMessage() ChallengeMessage {
-	return ChallengeMessage{BaseMessage: &BaseMessage{"challenge"}}
+	return ChallengeMessage{BaseMessage: &BaseMessage{"challenge"}, Challenges: make([]*ChallengeType, 0)}
 }
 
 type ChallengeType struct {
@@ -77,7 +77,7 @@ type AuthorizationRequestMessage struct {
 	*BaseMessage                     // authorizationRequest
 	SessionId    string              `json:"sessionID"`
 	Nonce        string              `json:"nonce"`
-	Signature    *Signature          `json:"signature"`
+	Signature    Signature           `json:"signature"`
 	Responses    []*ChallengeAnswers `json:"responses"`
 	Contact      []string            `json:"contact,omitempty"`
 }
@@ -96,9 +96,9 @@ func NewAuthorizationMessage() AuthorizationMessage {
 }
 
 type CertificateRequestMessage struct {
-	*BaseMessage            // certificateRequest
-	Csr          string     `json:"csr"`
-	Signature    *Signature `json:"signature"`
+	*BaseMessage           // certificateRequest
+	Csr          string    `json:"csr"`
+	Signature    Signature `json:"signature"`
 }
 
 type CertificateMessage struct {

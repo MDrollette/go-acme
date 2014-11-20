@@ -1,7 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -12,10 +11,6 @@ import (
 
 	"github.com/MDrollette/go-acme"
 	"github.com/justinas/alice"
-)
-
-const (
-	NONCE_BYTES = 16
 )
 
 type Server struct {
@@ -57,7 +52,7 @@ func loggingHandler(next http.Handler) http.Handler {
 func (c *context) debugHandler(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
-		fmt.Printf("%s\n", c.Service.state)
+		fmt.Printf("Current State: \n%s\n", c.Service.state)
 	}
 
 	return http.HandlerFunc(fn)
@@ -97,8 +92,8 @@ func (c *context) handleError(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *context) handleStatus(w http.ResponseWriter, r *http.Request) {
-	request := acme.StatusRequestMessage{}
-	err := json.Unmarshal(c.RawMessage, &request)
+	request := &acme.StatusRequestMessage{}
+	err := json.Unmarshal(c.RawMessage, request)
 	if err != nil {
 		fmt.Fprintf(w, "Error:", err)
 		return
@@ -110,70 +105,52 @@ func (c *context) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *context) handleChallenge(w http.ResponseWriter, r *http.Request) {
-	request := acme.ChallengeRequestMessage{}
-	err := json.Unmarshal(c.RawMessage, &request)
+	request := &acme.ChallengeRequestMessage{}
+	err := json.Unmarshal(c.RawMessage, request)
 	if err != nil {
 		fmt.Fprintf(w, "Error:", err)
 		return
 	}
 
-	// generate a nonce
-	b := make([]byte, NONCE_BYTES)
-	_, err = rand.Read(b)
-	if err != nil {
+	response, err := c.Service.ChallengeRequest(request)
+	if nil != err {
 		fmt.Fprintf(w, "Error:", err)
 		return
 	}
-	nonce := acme.Base64Encode(b)
-
-	// generate a session ID, which we don't actually use
-	s := make([]byte, NONCE_BYTES)
-	_, err = rand.Read(s)
-	if err != nil {
-		fmt.Fprintf(w, "Error:", err)
-		return
-	}
-	sessionId := acme.Base64Encode(s)
-
-	// we don't have any challenges yet
-	var challenges []*acme.ChallengeType
-
-	// save the state of this nonce/challenges
-	c.Service.state.SetIssuedChallenge(nonce, &Challenge{
-		Identifier: request.Identifier,
-		Challenges: challenges,
-	})
-
-	response := acme.NewChallengeMessage()
-	response.Nonce = nonce
-	response.Challenges = challenges
-	response.SessionId = sessionId
 
 	json.NewEncoder(w).Encode(response)
 }
 
 func (c *context) handleAuthorization(w http.ResponseWriter, r *http.Request) {
-	request := acme.AuthorizationRequestMessage{}
-	err := json.Unmarshal(c.RawMessage, &request)
+	request := &acme.AuthorizationRequestMessage{}
+	err := json.Unmarshal(c.RawMessage, request)
 	if err != nil {
 		fmt.Fprintf(w, "Error:", err)
 		return
 	}
 
-	response := acme.NewAuthorizationMessage()
+	response, err := c.Service.AuthorizationRequest(request)
+	if nil != err {
+		fmt.Fprintf(w, "Error:", err)
+		return
+	}
 
 	json.NewEncoder(w).Encode(response)
 }
 
 func (c *context) handleCertificate(w http.ResponseWriter, r *http.Request) {
-	request := acme.StatusRequestMessage{}
-	err := json.Unmarshal(c.RawMessage, &request)
+	request := &acme.CertificateRequestMessage{}
+	err := json.Unmarshal(c.RawMessage, request)
 	if err != nil {
 		fmt.Fprintf(w, "Error:", err)
 		return
 	}
 
-	response := acme.NewCertificateMessage()
+	response, err := c.Service.CertificateRequest(request)
+	if nil != err {
+		fmt.Fprintf(w, "Error:", err)
+		return
+	}
 
 	json.NewEncoder(w).Encode(response)
 }

@@ -1,7 +1,7 @@
 package server
 
 import (
-	"crypto/x509"
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -12,7 +12,7 @@ type inMemoryState struct {
 	issuedChallenges  chan map[string]*Challenge
 	authorizedKeys    chan map[string][]*acme.Jwk
 	recoveryKeys      chan map[string]string
-	certificates      chan map[string]*x509.Certificate
+	certificates      chan map[string][]byte
 	revocationStatus  chan map[string]bool
 	deferredResponses chan map[string]string
 }
@@ -22,7 +22,7 @@ func newInMemoryState() *inMemoryState {
 		issuedChallenges:  make(chan map[string]*Challenge, 1),
 		authorizedKeys:    make(chan map[string][]*acme.Jwk, 1),
 		recoveryKeys:      make(chan map[string]string, 1),
-		certificates:      make(chan map[string]*x509.Certificate, 1),
+		certificates:      make(chan map[string][]byte, 1),
 		revocationStatus:  make(chan map[string]bool, 1),
 		deferredResponses: make(chan map[string]string, 1),
 	}
@@ -30,7 +30,7 @@ func newInMemoryState() *inMemoryState {
 	s.issuedChallenges <- make(map[string]*Challenge)
 	s.authorizedKeys <- make(map[string][]*acme.Jwk)
 	s.recoveryKeys <- make(map[string]string)
-	s.certificates <- make(map[string]*x509.Certificate)
+	s.certificates <- make(map[string][]byte)
 	s.revocationStatus <- make(map[string]bool)
 	s.deferredResponses <- make(map[string]string)
 
@@ -63,7 +63,7 @@ func (s *inMemoryState) SetIssuedChallenge(nonce string, challenge *Challenge) e
 	return nil
 }
 
-func (s *inMemoryState) AuthorizedKey(identifier string) ([]*acme.Jwk, error) {
+func (s *inMemoryState) AuthorizedKeys(identifier string) ([]*acme.Jwk, error) {
 	db := <-s.authorizedKeys
 	defer func() { s.authorizedKeys <- db }()
 
@@ -80,7 +80,11 @@ func (s *inMemoryState) SetAuthorizedKeys(identifier string, keys ...*acme.Jwk) 
 	db := <-s.authorizedKeys
 	defer func() { s.authorizedKeys <- db }()
 
-	db[identifier] = keys
+	if _, exists := db[identifier]; !exists {
+		db[identifier] = make([]*acme.Jwk, 0)
+	}
+
+	db[identifier] = append(db[identifier], keys...)
 
 	return nil
 }
@@ -111,7 +115,7 @@ func (s *inMemoryState) SetRecoveryKey(key, identifier string) error {
 	return nil
 }
 
-func (s *inMemoryState) Certificate(serial string) (*x509.Certificate, error) {
+func (s *inMemoryState) Certificate(serial string) ([]byte, error) {
 	db := <-s.certificates
 	defer func() { s.certificates <- db }()
 
@@ -124,7 +128,7 @@ func (s *inMemoryState) Certificate(serial string) (*x509.Certificate, error) {
 	return nil, errors.New(fmt.Sprintf("No certificates for serial '%s'", serial))
 }
 
-func (s *inMemoryState) SetCertificate(serial string, certificate *x509.Certificate) error {
+func (s *inMemoryState) SetCertificate(serial string, certificate []byte) error {
 	db := <-s.certificates
 	defer func() { s.certificates <- db }()
 
@@ -182,14 +186,26 @@ func (s *inMemoryState) SetDeferredResponse(token, response string) error {
 }
 
 func (s *inMemoryState) String() string {
-	var out string
+	var buffer bytes.Buffer
+
+	buffer.WriteString("===============\n")
 
 	db := <-s.issuedChallenges
 	defer func() { s.issuedChallenges <- db }()
-
+	buffer.WriteString("issuedChallenges: ")
 	for key, value := range db {
-		out += fmt.Sprintf("%s:%s", key, value)
+		buffer.WriteString(fmt.Sprintf("%s:%s\n", key, value))
 	}
 
-	return out
+	buffer.WriteString("-------------\n")
+
+	db2 := <-s.authorizedKeys
+	defer func() { s.authorizedKeys <- db2 }()
+	buffer.WriteString("authorizedKeys: ")
+	for key, value := range db2 {
+		buffer.WriteString(fmt.Sprintf("%s:%s\n", key, value))
+	}
+	buffer.WriteString("===============\n")
+
+	return buffer.String()
 }
