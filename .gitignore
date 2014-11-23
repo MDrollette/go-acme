@@ -1,3 +1,4 @@
-/cmd/server.crt
-/cmd/server.key
+/cmd/ca_cert.pem
+/cmd/ca_key.pem
 /cmd/cmd
+

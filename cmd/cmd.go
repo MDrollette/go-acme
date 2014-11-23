@@ -15,12 +15,12 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "cert",
-			Value: "ca.crt",
+			Value: "ca_cert.pem",
 			Usage: "CA certificate",
 		},
 		cli.StringFlag{
 			Name:  "key",
-			Value: "ca.key",
+			Value: "ca_key.pem",
 			Usage: "CA private key",
 		},
 	}
