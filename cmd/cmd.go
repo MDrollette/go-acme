@@ -23,6 +23,11 @@ func main() {
 			Value: "ca_key.pem",
 			Usage: "CA private key",
 		},
+		cli.StringFlag{
+			Name:  "addr",
+			Value: "127.0.0.1:9999",
+			Usage: "ip and port to listen on",
+		},
 	}
 	app.Action = func(c *cli.Context) {
 		service := server.NewService(nil)
@@ -32,7 +37,7 @@ func main() {
 		}
 
 		server := server.NewServer(service)
-		server.Addr = "127.0.0.1:9999"
+		server.Addr = c.String("addr")
 		server.CertPath = c.String("cert")
 		server.KeyPath = c.String("key")
 
