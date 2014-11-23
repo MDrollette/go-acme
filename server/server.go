@@ -15,6 +15,8 @@ import (
 
 type Server struct {
 	*http.Server
+	CertPath string
+	KeyPath  string
 }
 
 type context struct {
@@ -24,18 +26,18 @@ type context struct {
 }
 
 func (s *Server) Start() error {
-	return s.ListenAndServeTLS("server.crt", "server.key")
+	log.Println("ACME server listening on", s.Addr)
+	return s.ListenAndServeTLS(s.CertPath, s.KeyPath)
 }
 
-func NewServer() *Server {
-	service := NewService(newInMemoryState())
-
+func NewServer(service *Service) *Server {
 	appC := context{Service: service}
+
 	commonHandlers := alice.New(loggingHandler, appC.requestProcessor, appC.debugHandler)
-	http.Handle("/acme", commonHandlers.ThenFunc(appC.handleRequest))
+	http.Handle("/", commonHandlers.ThenFunc(appC.handleRequest))
 
 	config := &tls.Config{MinVersion: tls.VersionTLS10}
-	return &Server{Server: &http.Server{Addr: "127.0.0.1:9999", TLSConfig: config}}
+	return &Server{Server: &http.Server{TLSConfig: config}}
 }
 
 func loggingHandler(next http.Handler) http.Handler {

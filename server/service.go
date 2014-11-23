@@ -4,8 +4,12 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"time"
 
 	"github.com/MDrollette/go-acme"
@@ -18,46 +22,67 @@ const (
 )
 
 type Service struct {
-	keyPair     *rsa.PrivateKey
-	certificate *x509.Certificate
+	KeyPair     *rsa.PrivateKey
+	Certificate *x509.Certificate
 	state       State
 }
 
 func NewService(s State) *Service {
-	sc := Service{state: s}
+	if nil == s {
+		s = newInMemoryState()
+	}
 
-	// @todo: load from somewhere
+	return &Service{state: s}
+}
+
+func (s *Service) InitCertificateAuthority() error {
 	keyPair, err := rsa.GenerateKey(rand.Reader, CA_KEY_SIZE)
 	if err != nil {
 		fmt.Println(err)
 	}
-	sc.keyPair = keyPair
+	s.KeyPair = keyPair
 
-	// @todo: load from somewhere
-	crt, err := acme.CreateCertificateAuthority(sc.keyPair)
+	caCert, err := createCACert(s.KeyPair)
 	if nil != err {
-		fmt.Println(err)
+		return err
 	}
-	sc.certificate = crt
+	s.Certificate = caCert
 
-	return &sc
+	certOut, err := os.Create("ca_cert.pem")
+	if err != nil {
+		return err
+	}
+	pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw})
+	certOut.Close()
+	log.Println("wrote ca_cert.pem")
+
+	keyOut, err := os.OpenFile("ca_key.pem", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	pem.Encode(keyOut, &pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(keyPair)})
+	keyOut.Close()
+	log.Println("wrote ca_key.pem")
+
+	return nil
 }
 
 func (s *Service) ChallengeRequest(message *acme.ChallengeRequestMessage) (*acme.ChallengeMessage, error) {
-	// @todo: validate that message.Identifier is a valid domain name
+	// check for valid domain name as the identifier
+	if err := acme.ValidDomain(message.Identifier); nil != err {
+		return nil, err
+	}
 
 	// generate a nonce
 	b := make([]byte, NONCE_BYTES)
-	_, err := rand.Read(b)
-	if err != nil {
+	if _, err := rand.Read(b); nil != err {
 		return nil, err
 	}
 	nonce := acme.Base64Encode(b)
 
 	// generate a session ID, which we don't actually use
 	n := make([]byte, NONCE_BYTES)
-	_, err = rand.Read(n)
-	if err != nil {
+	if _, err := rand.Read(n); err != nil {
 		return nil, err
 	}
 	sessionId := acme.Base64Encode(n)
@@ -90,12 +115,11 @@ func (s *Service) CertificateRequest(message *acme.CertificateRequestMessage) (*
 	if nil != err {
 		return nil, err
 	}
-
 	if !verified {
 		return nil, fmt.Errorf("Unable to verify signature")
 	}
 
-	// Validate CSR and extract domains
+	// validate the CSR
 	der, err := acme.Base64Decode(message.Csr)
 	if nil != err {
 		return nil, err
@@ -104,13 +128,12 @@ func (s *Service) CertificateRequest(message *acme.CertificateRequestMessage) (*
 	if nil != err {
 		return nil, err
 	}
-
 	err = acme.VerifyCsr(csr)
 	if nil != err {
 		return nil, err
 	}
 
-	// Validate that authorization key is authorized for all domains
+	// Validate that key is authorized for all domains in this CSR
 	err = s.authorizedForIdentifier(csr.Subject.CommonName, &message.Signature.Jwk)
 	if nil != err {
 		return nil, err
@@ -183,7 +206,7 @@ func (s *Service) createCertificate(csr *x509.CertificateRequest) ([]byte, strin
 		BasicConstraintsValid: true,
 	}
 
-	crtHostBytes, err := x509.CreateCertificate(rand.Reader, &template, s.certificate, csr.PublicKey, s.keyPair)
+	crtHostBytes, err := x509.CreateCertificate(rand.Reader, &template, s.Certificate, csr.PublicKey, s.KeyPair)
 	if err != nil {
 		return nil, "", err
 	}
@@ -214,4 +237,30 @@ type State interface {
 
 	DeferredResponse(token string) (string, error)
 	SetDeferredResponse(token, response string) error
+}
+
+func createCACert(priv *rsa.PrivateKey) (*x509.Certificate, error) {
+	cert := &x509.Certificate{
+		SerialNumber: big.NewInt(0),
+		Subject: pkix.Name{
+			CommonName: "CA Root",
+		},
+		NotBefore:             time.Now().Add(-time.Second).UTC(),
+		NotAfter:              time.Now().AddDate(1, 0, 0).UTC(),
+		IsCA:                  true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, cert, cert, &priv.PublicKey, priv)
+	if err != nil {
+		return nil, err
+	}
+
+	cert, err = x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, nil
 }

@@ -1,5 +1,23 @@
 package acme
 
+type Signature struct {
+	Alg   string `json:"alg"`
+	Sig   string `json:"sig"`
+	Nonce string `json:"nonce"`
+	Jwk   Jwk    `json:"jwk"`
+}
+
+type Jwk struct {
+	Kty string `json:"kty"`
+	E   string `json:"e"`
+	N   string `json:"n"`
+}
+
+type ChallengeType struct {
+	Type  string `json:"type"`
+	Token string `json:"token"`
+}
+
 type BaseMessage struct {
 	Type string `json:"type"`
 }
@@ -38,17 +56,8 @@ type StatusRequestMessage struct {
 	Token        string `json:"token"`
 }
 
-type Signature struct {
-	Alg   string `json:"alg"`
-	Sig   string `json:"sig"`
-	Nonce string `json:"nonce"`
-	Jwk   Jwk    `json:"jwk"`
-}
-
-type Jwk struct {
-	Kty string `json:"kty"`
-	E   string `json:"e"`
-	N   string `json:"n"`
+func NewStatusRequestMessage() StatusRequestMessage {
+	return StatusRequestMessage{BaseMessage: &BaseMessage{"statusRequest"}}
 }
 
 type ChallengeRequestMessage struct {
@@ -68,21 +77,14 @@ func NewChallengeMessage() ChallengeMessage {
 	return ChallengeMessage{BaseMessage: &BaseMessage{"challenge"}, Challenges: make([]*ChallengeType, 0)}
 }
 
-type ChallengeType struct {
-	Type  string `json:"type"`
-	Token string `json:"token"`
-}
-
 type AuthorizationRequestMessage struct {
 	*BaseMessage                     // authorizationRequest
 	SessionId    string              `json:"sessionID"`
 	Nonce        string              `json:"nonce"`
-	Signature    Signature           `json:"signature"`
-	Responses    []*ChallengeAnswers `json:"responses"`
+	Signature    *Signature          `json:"signature"`
+	Responses    []map[string]string `json:"responses"`
 	Contact      []string            `json:"contact,omitempty"`
 }
-
-type ChallengeAnswers map[string]string
 
 type AuthorizationMessage struct {
 	*BaseMessage         // authorization
@@ -96,9 +98,9 @@ func NewAuthorizationMessage() AuthorizationMessage {
 }
 
 type CertificateRequestMessage struct {
-	*BaseMessage           // certificateRequest
-	Csr          string    `json:"csr"`
-	Signature    Signature `json:"signature"`
+	*BaseMessage            // certificateRequest
+	Csr          string     `json:"csr"`
+	Signature    *Signature `json:"signature"`
 }
 
 type CertificateMessage struct {

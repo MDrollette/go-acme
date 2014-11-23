@@ -1,25 +1,16 @@
 package acme
 
 import (
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/sha512"
-	"crypto/x509"
-	"crypto/x509/pkix"
+	"bytes"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash"
-	"math/big"
 	"strings"
-	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
-// joseBase64UrlEncode encodes the given data using the standard base64 url
+// Base64Encode encodes the given data using the standard base64 url
 // encoding format but with all trailing '=' characters ommitted in accordance
 // with the jose specification.
 // http://tools.ietf.org/html/draft-ietf-jose-json-web-signature-31#section-2
@@ -30,7 +21,7 @@ func Base64Encode(b []byte) string {
 	return s
 }
 
-// joseBase64UrlDecode decodes the given string using the standard base64 url
+// Base64Decode decodes the given string using the standard base64 url
 // decoder but first adds the appropriate number of trailing '=' characters in
 // accordance with the jose specification.
 // http://tools.ietf.org/html/draft-ietf-jose-json-web-signature-31#section-2
@@ -49,164 +40,104 @@ func Base64Decode(s string) ([]byte, error) {
 	return base64.URLEncoding.DecodeString(s)
 }
 
-func VerifySignature(sig Signature, content []byte) (bool, error) {
-	// Assumes validSignature(sig)
-	if sig.Jwk.Kty != "RSA" {
-		// Unsupported key type
-		return false, errors.New("Unsupported key type")
+var (
+	// A-Z, a-z, 0-9, and hyphen are the only valid characters for domains.
+	domainTable = &unicode.RangeTable{
+		R16: []unicode.Range16{
+			{'-', '-', 1},
+			{'0', '9', 1},
+			{'A', 'Z', 1},
+			{'a', 'z', 1},
+		},
+		LatinOffset: 4,
+	}
+)
+
+// Checks for a valid domain name. Checks lengths, characters, and looks for a
+// valid TLD (according to IANA).
+func ValidDomain(s string) error {
+	p := []byte(s)
+	//func IsDomain(p []byte) (res validate.Result) {
+	// Domain rules:
+	// - 255 character total length max
+	// - 63 character label max
+	// - 127 sub-domains
+	// - Characters a-z, A-Z, 0-9, and -
+	// - Labels may not start or end with -
+	// - TLD may not be all numeric
+
+	// Check for max length.
+	// NOTE: Invalid unicode will count as a 1 byte rune, but we'll catch that later.
+	if utf8.RuneCount(p) > 255 {
+		return fmt.Errorf("Invalid domain. Length is greater than 255.")
 	}
 
-	// Compute signature input
-	nonceDec, err := Base64Decode(sig.Nonce)
-	if nil != err {
-		return false, err
-	}
-	signatureInput := append(nonceDec, content...)
-
-	// Compute message digest
-	var hasher hash.Hash
-	var hashType crypto.Hash
-	switch sig.Alg {
-	case "RS1":
-		hasher = sha1.New()
-		hashType = crypto.SHA1
-		break
-	case "RS256":
-		hasher = sha256.New()
-		hashType = crypto.SHA256
-		break
-	case "RS384":
-		hasher = sha512.New384()
-		hashType = crypto.SHA384
-		break
-	case "RS512":
-		hasher = sha512.New()
-		hashType = crypto.SHA512
-		break
-	default:
-		return false, errors.New("Unsupported algorithm")
-	}
-	hasher.Write(signatureInput)
-
-	publicKey, err := rsaPublicKeyFromJwk(&sig.Jwk)
-	if nil != err {
-		return false, err
+	// First we split by label
+	domain := bytes.Split(p, []byte("."))
+	// 127 sub-domains max (not including TLD)
+	if len(domain) > 128 {
+		return fmt.Errorf("Invalid domain. Contains more than 128 subdomains.")
 	}
 
-	sigThing, err := Base64Decode(sig.Sig)
-	if nil != err {
-		return false, err
+	// Check each domain for valid characters
+	for _, subDomain := range domain {
+		length := len(subDomain)
+		// Check for a domain with two periods next to eachother.
+		if length < 1 {
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		// Check 63 character max.
+		if length > 63 {
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		// Check that label doesn't start or end with hyphen.
+		r, size := utf8.DecodeRune(subDomain)
+		if r == utf8.RuneError && size == 1 {
+			// Invalid rune
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		if r == '-' {
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		r, size = utf8.DecodeLastRune(subDomain)
+		if r == utf8.RuneError && size == 1 {
+			// Invalid rune
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		if r == '-' {
+			return fmt.Errorf("Invalid domain.")
+		}
+
+		// Now we check each rune individually to make sure its valid unicode
+		// and an acceptable character.
+		for i := 0; i < length; {
+			if subDomain[i] < utf8.RuneSelf {
+				// Check if it's a valid domain character
+				if !unicode.Is(domainTable, rune(subDomain[i])) {
+					return fmt.Errorf("Invalid domain.")
+				}
+				i++
+			} else {
+				r, size := utf8.DecodeRune(subDomain[i:])
+				if size == 1 {
+					// All valid runes of size 1 (those
+					// below RuneSelf) were handled above.
+					// This must be a RuneError.
+					return fmt.Errorf("Invalid domain.")
+				}
+				// Check if it's a valid domain character
+				if !unicode.Is(domainTable, r) {
+					return fmt.Errorf("Invalid domain.")
+				}
+				i += size
+			}
+		}
 	}
 
-	err = rsa.VerifyPKCS1v15(publicKey, hashType, hasher.Sum(nil), sigThing)
-	if nil != err {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func VerifyCsr(csr *x509.CertificateRequest) error {
-	var hashType crypto.Hash
-
-	switch csr.SignatureAlgorithm {
-	case x509.SHA1WithRSA:
-		hashType = crypto.SHA1
-	case x509.SHA256WithRSA:
-		hashType = crypto.SHA256
-	case x509.SHA384WithRSA:
-		hashType = crypto.SHA384
-	case x509.SHA512WithRSA:
-		hashType = crypto.SHA512
-	default:
-		return x509.ErrUnsupportedAlgorithm
-	}
-
-	if !hashType.Available() {
-		return x509.ErrUnsupportedAlgorithm
-	}
-	h := hashType.New()
-
-	h.Write(csr.RawTBSCertificateRequest)
-	digest := h.Sum(nil)
-
-	switch pub := csr.PublicKey.(type) {
-	case *rsa.PublicKey:
-		return rsa.VerifyPKCS1v15(pub, hashType, digest, csr.Signature)
-	}
-
-	return x509.ErrUnsupportedAlgorithm
-}
-
-func rsaPublicKeyFromJwk(jwk *Jwk) (*rsa.PublicKey, error) {
-	n, err := parseRSAModulusParam(jwk.N)
-	if err != nil {
-		return nil, fmt.Errorf("JWK RSA Public Key modulus: %s", err)
-	}
-
-	e, err := parseRSAPublicExponentParam(jwk.E)
-	if err != nil {
-		return nil, fmt.Errorf("JWK RSA Public Key exponent: %s", err)
-	}
-
-	return &rsa.PublicKey{N: n, E: e}, nil
-}
-
-func parseRSAModulusParam(nB64Url string) (*big.Int, error) {
-	nBytes, err := Base64Decode(nB64Url)
-	if err != nil {
-		return nil, fmt.Errorf("invalid base64 URL encoding: %s", err)
-	}
-
-	return new(big.Int).SetBytes(nBytes), nil
-}
-
-func parseRSAPublicExponentParam(eB64Url string) (int, error) {
-	eBytes, err := Base64Decode(eB64Url)
-	if err != nil {
-		return 0, fmt.Errorf("invalid base64 URL encoding: %s", err)
-	}
-
-	byteLen := len(eBytes)
-	buf := make([]byte, 4-byteLen, 4)
-	eBytes = append(buf, eBytes...)
-
-	return int(binary.BigEndian.Uint32(eBytes)), nil
-}
-
-func CreateCertificateAuthority(key *rsa.PrivateKey) (*x509.Certificate, error) {
-	authPkixName := pkix.Name{
-		Country:            []string{"US"},
-		Organization:       []string{"Go"},
-		OrganizationalUnit: []string{"CA"},
-		Locality:           nil,
-		Province:           nil,
-		StreetAddress:      nil,
-		PostalCode:         nil,
-		SerialNumber:       "",
-		CommonName:         "",
-	}
-
-	authTemplate := x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               authPkixName,
-		NotBefore:             time.Now().Add(-600).UTC(),
-		NotAfter:              time.Now().AddDate(1, 0, 0).UTC(),
-		KeyUsage:              x509.KeyUsageCertSign,
-		ExtKeyUsage:           nil,
-		UnknownExtKeyUsage:    nil,
-		BasicConstraintsValid: true,
-		IsCA:                        true,
-		MaxPathLen:                  0,
-		DNSNames:                    nil,
-		PermittedDNSDomainsCritical: false,
-		PermittedDNSDomains:         nil,
-	}
-
-	crtBytes, err := x509.CreateCertificate(rand.Reader, &authTemplate, &authTemplate, &key.PublicKey, key)
-	if err != nil {
-		return nil, err
-	}
-
-	return x509.ParseCertificate(crtBytes)
+	return nil
 }
