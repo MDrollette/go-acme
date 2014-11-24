@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/MDrollette/go-acme"
+	"github.com/MDrollette/go-acme/acme"
 	"github.com/justinas/alice"
 )
 

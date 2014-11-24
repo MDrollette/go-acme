@@ -12,7 +12,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/MDrollette/go-acme"
+	"github.com/MDrollette/go-acme/acme"
 	"github.com/nu7hatch/gouuid"
 )
 

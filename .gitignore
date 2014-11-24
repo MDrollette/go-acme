@@ -1,4 +1,3 @@
-/cmd/ca_cert.pem
-/cmd/ca_key.pem
-/cmd/cmd
-
+ca_cert.pem
+ca_key.pem
+go-acme

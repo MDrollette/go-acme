@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultServerURL = "https://127.0.0.1:8888/acme"
+	defaultServerURL = "https://127.0.0.1:9999/"
 )
 
 type Client struct {

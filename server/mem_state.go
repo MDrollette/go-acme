@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/MDrollette/go-acme"
+	"github.com/MDrollette/go-acme/acme"
 )
 
 type inMemoryState struct {
